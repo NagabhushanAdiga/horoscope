@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>KP Kundli Chart (North & South)</title>
+  <title>Lagna KP Kundli (Accurate North & South)</title>
   <style>
     :root {
       --bg: #0f172a;
@@ -204,8 +204,8 @@
 <body>
   <div class="container">
     <div class="card">
-      <h1>KP Kundli Generator (North + South Charts)</h1>
-      <div class="sub">Enter birth date, time, and place. This tool computes sidereal placements (KP ayanamsa approximation), then renders both chart styles.</div>
+      <h1>Lagna KP Kundli Generator (North + South)</h1>
+      <div class="sub">Enter birth date, time, and place. This tool uses Swiss Ephemeris with Krishnamurti ayanamsa for accurate sidereal Lagna, planetary degrees, Nakshatra/Naadi, and cusp details.</div>
       <div class="form-grid">
         <div>
           <label for="birthDate">Birth Date</label>
@@ -238,7 +238,7 @@
           <div id="southChart" class="south-grid"></div>
         </div>
       </div>
-      <div class="note">Note: This is a practical KP-style calculator with low-precision ephemeris math suitable for quick use in browser apps.</div>
+      <div class="note">Note: This page loads Swiss Ephemeris (WASM) from CDN for high-accuracy KP calculations. Run from HTTP/HTTPS (not file://) for browser module loading.</div>
     </div>
 
     <div class="card">
@@ -251,21 +251,42 @@
             <th>Sidereal Position</th>
             <th>House</th>
             <th>Nakshatra</th>
+            <th>Pada</th>
+            <th>Naadi</th>
             <th>Star Lord</th>
             <th>Sub Lord</th>
+            <th>Motion</th>
           </tr>
         </thead>
         <tbody id="planetTable"></tbody>
       </table>
     </div>
+
+    <div class="card">
+      <h2>KP Cusp Details (Placidus Sidereal)</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>House</th>
+            <th>Cusp Degree</th>
+            <th>Sign</th>
+            <th>Nakshatra</th>
+            <th>Pada</th>
+            <th>Naadi</th>
+            <th>Star Lord</th>
+            <th>Sub Lord</th>
+          </tr>
+        </thead>
+        <tbody id="cuspTable"></tbody>
+      </table>
+    </div>
   </div>
 
-  <script>
+  <script type="module">
     const SIGNS = [
       "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
       "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
     ];
-
     const NAKSHATRAS = [
       "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra",
       "Punarvasu", "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni",
@@ -273,9 +294,23 @@
       "Mula", "Purva Ashadha", "Uttara Ashadha", "Shravana", "Dhanishta", "Shatabhisha",
       "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
     ];
-
+    const NADI_TYPES = ["Adi", "Madhya", "Antya"];
     const KP_LORD_ORDER = ["Ketu", "Venus", "Sun", "Moon", "Mars", "Rahu", "Jupiter", "Saturn", "Mercury"];
     const DASHA_YEARS = { Ketu: 7, Venus: 20, Sun: 6, Moon: 10, Mars: 7, Rahu: 18, Jupiter: 16, Saturn: 19, Mercury: 17 };
+    const NAK_LEN_DEG = 360 / 27;
+    const NAK_LEN_ARCMIN = 800;
+    const NADI_SEG_ARCMIN = NAK_LEN_ARCMIN / 150;
+
+    const PLANET_CONFIG = [
+      { key: "Sun", id: "SE_SUN", short: "Su" },
+      { key: "Moon", id: "SE_MOON", short: "Mo" },
+      { key: "Mars", id: "SE_MARS", short: "Ma" },
+      { key: "Mercury", id: "SE_MERCURY", short: "Me" },
+      { key: "Jupiter", id: "SE_JUPITER", short: "Ju" },
+      { key: "Venus", id: "SE_VENUS", short: "Ve" },
+      { key: "Saturn", id: "SE_SATURN", short: "Sa" },
+      { key: "Rahu", id: "SE_MEAN_NODE", short: "Ra" }
+    ];
 
     const NORTH_POSITIONS = {
       1: [0, 3], 2: [1, 4], 3: [2, 5], 4: [3, 6], 5: [4, 5], 6: [5, 4],
@@ -289,9 +324,14 @@
       9, 8, 7, 6
     ];
 
-    function degToRad(d) { return d * Math.PI / 180; }
-    function radToDeg(r) { return r * 180 / Math.PI; }
+    const SWISSEPH_IMPORTS = [
+      "https://cdn.jsdelivr.net/npm/swisseph-wasm@0.0.5/src/swisseph.js",
+      "https://unpkg.com/swisseph-wasm@0.0.5/src/swisseph.js"
+    ];
+
     function normDeg(d) { return ((d % 360) + 360) % 360; }
+    function arcForward(start, end) { return normDeg(end - start); }
+    function absDateFromUtcMs(utcMs) { return new Date(utcMs); }
 
     function formatDms(deg) {
       const d = normDeg(deg);
@@ -300,210 +340,17 @@
       const whole = Math.floor(within);
       const minFull = (within - whole) * 60;
       const mins = Math.floor(minFull);
-      const secs = Math.floor((minFull - mins) * 60);
+      const secs = Math.round((minFull - mins) * 60);
       return `${whole.toString().padStart(2, "0")}°${mins.toString().padStart(2, "0")}'${secs.toString().padStart(2, "0")}" ${SIGNS[signIdx]}`;
     }
 
-    function julianDayFromUnixMs(ms) {
-      return ms / 86400000 + 2440587.5;
-    }
-
-    function earthObliquityDeg(T) {
-      return 23.43929111 - (46.8150 * T + 0.00059 * T * T - 0.001813 * T * T * T) / 3600;
-    }
-
-    function kpAyanamsaDeg(jd) {
-      const years = (jd - 2451545.0) / 365.2425;
-      return 23.85675 + 0.0139688 * years;
-    }
-
-    function gmstDeg(jd) {
-      const T = (jd - 2451545.0) / 36525;
-      return normDeg(
-        280.46061837 +
-        360.98564736629 * (jd - 2451545.0) +
-        0.000387933 * T * T -
-        (T * T * T) / 38710000
-      );
-    }
-
-    function ascendantDeg(jd, latDeg, lonDeg) {
-      const T = (jd - 2451545.0) / 36525;
-      const eps = degToRad(earthObliquityDeg(T));
-      const theta = degToRad(normDeg(gmstDeg(jd) + lonDeg));
-      const phi = degToRad(latDeg);
-      const asc = Math.atan2(
-        Math.cos(theta),
-        -Math.sin(theta) * Math.cos(eps) - Math.tan(phi) * Math.sin(eps)
-      );
-      return normDeg(radToDeg(asc));
-    }
-
-    function solveKepler(Mdeg, e) {
-      const M = degToRad(normDeg(Mdeg));
-      let E = M + e * Math.sin(M) * (1 + e * Math.cos(M));
-      for (let i = 0; i < 6; i += 1) {
-        E = E - (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
-      }
-      return E;
-    }
-
-    function heliocentricCoords(elements) {
-      const E = solveKepler(elements.M, elements.e);
-      const xv = elements.a * (Math.cos(E) - elements.e);
-      const yv = elements.a * (Math.sqrt(1 - elements.e * elements.e) * Math.sin(E));
-      const v = Math.atan2(yv, xv);
-      const r = Math.sqrt(xv * xv + yv * yv);
-
-      const N = degToRad(elements.N);
-      const i = degToRad(elements.i);
-      const w = degToRad(elements.w);
-      const vw = v + w;
-
-      const xh = r * (Math.cos(N) * Math.cos(vw) - Math.sin(N) * Math.sin(vw) * Math.cos(i));
-      const yh = r * (Math.sin(N) * Math.cos(vw) + Math.cos(N) * Math.sin(vw) * Math.cos(i));
-      const zh = r * (Math.sin(vw) * Math.sin(i));
-
-      return { xh, yh, zh };
-    }
-
-    function tropicalPlanetLongitudes(jd) {
-      const d = jd - 2451543.5;
-
-      const earth = heliocentricCoords({
-        N: 0, i: 0, w: 282.9404 + 4.70935e-5 * d, a: 1,
-        e: 0.016709 - 1.151e-9 * d, M: 356.0470 + 0.9856002585 * d
-      });
-
-      function geoLonFor(elements) {
-        const p = heliocentricCoords(elements);
-        const xg = p.xh - earth.xh;
-        const yg = p.yh - earth.yh;
-        return normDeg(radToDeg(Math.atan2(yg, xg)));
-      }
-
-      const sunLon = normDeg(radToDeg(Math.atan2(earth.yh, earth.xh)) + 180);
-
-      const mercuryLon = geoLonFor({
-        N: 48.3313 + 3.24587e-5 * d,
-        i: 7.0047 + 5.00e-8 * d,
-        w: 29.1241 + 1.01444e-5 * d,
-        a: 0.387098,
-        e: 0.205635 + 5.59e-10 * d,
-        M: 168.6562 + 4.0923344368 * d
-      });
-
-      const venusLon = geoLonFor({
-        N: 76.6799 + 2.46590e-5 * d,
-        i: 3.3946 + 2.75e-8 * d,
-        w: 54.8910 + 1.38374e-5 * d,
-        a: 0.723330,
-        e: 0.006773 - 1.302e-9 * d,
-        M: 48.0052 + 1.6021302244 * d
-      });
-
-      const marsLon = geoLonFor({
-        N: 49.5574 + 2.11081e-5 * d,
-        i: 1.8497 - 1.78e-8 * d,
-        w: 286.5016 + 2.92961e-5 * d,
-        a: 1.523688,
-        e: 0.093405 + 2.516e-9 * d,
-        M: 18.6021 + 0.5240207766 * d
-      });
-
-      const jupiterLon = geoLonFor({
-        N: 100.4542 + 2.76854e-5 * d,
-        i: 1.3030 - 1.557e-7 * d,
-        w: 273.8777 + 1.64505e-5 * d,
-        a: 5.20256,
-        e: 0.048498 + 4.469e-9 * d,
-        M: 19.8950 + 0.0830853001 * d
-      });
-
-      const saturnLon = geoLonFor({
-        N: 113.6634 + 2.38980e-5 * d,
-        i: 2.4886 - 1.081e-7 * d,
-        w: 339.3939 + 2.97661e-5 * d,
-        a: 9.55475,
-        e: 0.055546 - 9.499e-9 * d,
-        M: 316.9670 + 0.0334442282 * d
-      });
-
-      const Ms = normDeg(356.0470 + 0.9856002585 * d);
-      const ws = normDeg(282.9404 + 4.70935e-5 * d);
-      const Ls = normDeg(Ms + ws);
-
-      const moonElements = {
-        N: 125.1228 - 0.0529538083 * d,
-        i: 5.1454,
-        w: 318.0634 + 0.1643573223 * d,
-        a: 60.2666,
-        e: 0.0549,
-        M: 115.3654 + 13.0649929509 * d
-      };
-
-      const moonBase = heliocentricCoords(moonElements);
-      let moonLon = normDeg(radToDeg(Math.atan2(moonBase.yh, moonBase.xh)));
-
-      const Mm = normDeg(moonElements.M);
-      const Nm = normDeg(moonElements.N);
-      const wm = normDeg(moonElements.w);
-      const Lm = normDeg(Mm + wm + Nm);
-      const Dm = normDeg(Lm - Ls);
-      const F = normDeg(Lm - Nm);
-
-      moonLon +=
-        -1.274 * Math.sin(degToRad(Mm - 2 * Dm)) +
-         0.658 * Math.sin(degToRad(2 * Dm)) +
-        -0.186 * Math.sin(degToRad(Ms)) +
-        -0.059 * Math.sin(degToRad(2 * Mm - 2 * Dm)) +
-        -0.057 * Math.sin(degToRad(Mm - 2 * Dm + Ms)) +
-         0.053 * Math.sin(degToRad(Mm + 2 * Dm)) +
-         0.046 * Math.sin(degToRad(2 * Dm - Ms)) +
-         0.041 * Math.sin(degToRad(Mm - Ms)) +
-        -0.035 * Math.sin(degToRad(Dm)) +
-        -0.031 * Math.sin(degToRad(Mm + Ms)) +
-        -0.015 * Math.sin(degToRad(2 * F - 2 * Dm)) +
-         0.011 * Math.sin(degToRad(Mm - 4 * Dm));
-      moonLon = normDeg(moonLon);
-
-      const rahuLon = normDeg(125.04452 - 0.0529538083 * d);
-      const ketuLon = normDeg(rahuLon + 180);
-
-      return {
-        Sun: sunLon,
-        Moon: moonLon,
-        Mars: marsLon,
-        Mercury: mercuryLon,
-        Jupiter: jupiterLon,
-        Venus: venusLon,
-        Saturn: saturnLon,
-        Rahu: rahuLon,
-        Ketu: ketuLon
-      };
-    }
-
-    function getNakshatraInfo(siderealLon) {
-      const nakLen = 360 / 27;
-      const idx = Math.floor(normDeg(siderealLon) / nakLen);
-      const withinDeg = normDeg(siderealLon) - idx * nakLen;
-      const withinArcMin = withinDeg * 60;
-      const starLord = KP_LORD_ORDER[idx % 9];
-
-      const subOrderStart = KP_LORD_ORDER.indexOf(starLord);
-      let acc = 0;
-      let subLord = starLord;
-      for (let i = 0; i < 9; i += 1) {
-        const lord = KP_LORD_ORDER[(subOrderStart + i) % 9];
-        const seg = (800 * DASHA_YEARS[lord]) / 120;
-        if (withinArcMin >= acc && withinArcMin < acc + seg) {
-          subLord = lord;
-          break;
-        }
-        acc += seg;
-      }
-
-      return { nakshatra: NAKSHATRAS[idx], starLord, subLord };
+    function formatShortDeg(deg) {
+      const d = normDeg(deg);
+      const signIdx = Math.floor(d / 30);
+      const within = d - signIdx * 30;
+      const dd = Math.floor(within);
+      const mm = Math.floor((within - dd) * 60);
+      return `${dd.toString().padStart(2, "0")}°${mm.toString().padStart(2, "0")}' ${SIGNS[signIdx].slice(0, 3)}`;
     }
 
     function getTimeZoneOffsetMs(timeZone, date) {
@@ -517,7 +364,6 @@
         minute: "2-digit",
         second: "2-digit"
       }).formatToParts(date);
-
       const map = {};
       parts.forEach((p) => { if (p.type !== "literal") map[p.type] = p.value; });
       const asUTC = Date.UTC(
@@ -534,11 +380,7 @@
     function zonedDateTimeToUtcMs(dateStr, timeStr, timeZone) {
       const [y, m, d] = dateStr.split("-").map(Number);
       const [hh, mm, ss = "0"] = timeStr.split(":");
-      const h = Number(hh);
-      const min = Number(mm);
-      const sec = Number(ss);
-      const localAsIfUtc = Date.UTC(y, m - 1, d, h, min, sec);
-
+      const localAsIfUtc = Date.UTC(y, m - 1, d, Number(hh), Number(mm), Number(ss));
       let offset = getTimeZoneOffsetMs(timeZone, new Date(localAsIfUtc));
       let utcMs = localAsIfUtc - offset;
       const offset2 = getTimeZoneOffsetMs(timeZone, new Date(utcMs));
@@ -548,7 +390,7 @@
 
     async function geocodePlace(place) {
       const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(place)}`;
-      const res = await fetch(url, { headers: { "Accept": "application/json" } });
+      const res = await fetch(url, { headers: { Accept: "application/json" } });
       if (!res.ok) throw new Error("Place lookup failed.");
       const data = await res.json();
       if (!data || !data.length) throw new Error("Place not found.");
@@ -568,49 +410,84 @@
       return data.timezone;
     }
 
-    function buildHouseData(ascSidereal, siderealPlanets) {
-      const ascSignIdx = Math.floor(ascSidereal / 30);
-      const houses = {};
+    let swePromise = null;
+    async function getSwissEph() {
+      if (swePromise) return swePromise;
+      swePromise = (async () => {
+        let lastErr = null;
+        for (const url of SWISSEPH_IMPORTS) {
+          try {
+            const mod = await import(url);
+            const SwissEph = mod.default;
+            const swe = new SwissEph();
+            await swe.initSwissEph();
+            swe.set_sid_mode(swe.SE_SIDM_KRISHNAMURTI, 0, 0);
+            return swe;
+          } catch (err) {
+            lastErr = err;
+          }
+        }
+        throw new Error(`Swiss Ephemeris load failed. ${lastErr ? lastErr.message : ""}`.trim());
+      })();
+      return swePromise;
+    }
+
+    function getNakshatraInfo(lon) {
+      const d = normDeg(lon);
+      const idx = Math.floor(d / NAK_LEN_DEG);
+      const withinDeg = d - idx * NAK_LEN_DEG;
+      const withinArcMin = withinDeg * 60;
+      const pada = Math.min(4, Math.floor(withinDeg / (NAK_LEN_DEG / 4)) + 1);
+      const starLord = KP_LORD_ORDER[idx % 9];
+      const startAt = KP_LORD_ORDER.indexOf(starLord);
+
+      let acc = 0;
+      let subLord = starLord;
+      for (let i = 0; i < 9; i += 1) {
+        const lord = KP_LORD_ORDER[(startAt + i) % 9];
+        const seg = (NAK_LEN_ARCMIN * DASHA_YEARS[lord]) / 120;
+        if (withinArcMin >= acc && withinArcMin < acc + seg) {
+          subLord = lord;
+          break;
+        }
+        acc += seg;
+      }
+
+      const nadiType = NADI_TYPES[idx % 3];
+      const nadiIndex = Math.min(150, Math.floor(withinArcMin / NADI_SEG_ARCMIN) + 1);
+      return {
+        nakshatra: NAKSHATRAS[idx],
+        pada,
+        nadiType,
+        nadiIndex,
+        starLord,
+        subLord
+      };
+    }
+
+    function getHouseFromCusps(lon, cuspMap) {
+      const d = normDeg(lon);
       for (let h = 1; h <= 12; h += 1) {
-        const signIdx = (ascSignIdx + h - 1) % 12;
-        houses[h] = { signIdx, planets: [] };
+        const start = cuspMap[h];
+        const end = cuspMap[h === 12 ? 1 : h + 1];
+        const span = arcForward(start, end);
+        const rel = arcForward(start, d);
+        if (rel < span) return h;
       }
-
-      const planetRows = [];
-      for (const [planet, lon] of Object.entries(siderealPlanets)) {
-        const signIdx = Math.floor(normDeg(lon) / 30);
-        const house = ((signIdx - ascSignIdx + 12) % 12) + 1;
-        houses[house].planets.push(planet);
-
-        const kp = getNakshatraInfo(lon);
-        planetRows.push({
-          planet,
-          lon,
-          house,
-          ...kp
-        });
-      }
-
-      planetRows.sort((a, b) => a.house - b.house);
-      return { houses, ascSignIdx, planetRows };
+      return 12;
     }
 
-    function shortPlanetList(planets) {
-      if (!planets.length) return "-";
-      return planets
-        .map((p) => (p === "Jupiter" ? "Jup" : p === "Mercury" ? "Mer" : p === "Saturn" ? "Sat" : p === "Venus" ? "Ven" : p === "Rahu" ? "Ra" : p === "Ketu" ? "Ke" : p === "Sun" ? "Su" : p === "Moon" ? "Mo" : p === "Mars" ? "Ma" : p))
-        .join(", ");
+    function planetToken(row) {
+      return `${row.short} ${formatShortDeg(row.lon)}${row.retro ? "R" : ""}`;
     }
 
-    function renderNorthChart(houses) {
+    function renderNorthChart(houseRows) {
       const root = document.getElementById("northChart");
       root.innerHTML = "";
       const grid = Array.from({ length: 49 }, () => null);
-
       for (let h = 1; h <= 12; h += 1) {
         const [r, c] = NORTH_POSITIONS[h];
-        const idx = r * 7 + c;
-        grid[idx] = h;
+        grid[r * 7 + c] = h;
       }
 
       for (let i = 0; i < 49; i += 1) {
@@ -621,21 +498,21 @@
           root.appendChild(div);
           continue;
         }
-        const data = houses[house];
+        const data = houseRows[house];
+        const planets = data.planets.length ? data.planets.map(planetToken).join("\n") : "-";
         div.className = "n-cell";
         div.innerHTML = `
-          <div class="house-head">H${house}</div>
-          <div class="sign-line">${SIGNS[data.signIdx]}</div>
-          <div class="planet-line">${shortPlanetList(data.planets)}</div>
+          <div class="house-head">H${house} | Cusp ${formatShortDeg(data.cusp)}</div>
+          <div class="sign-line">${SIGNS[Math.floor(data.cusp / 30)]}</div>
+          <div class="planet-line">${planets}</div>
         `;
         root.appendChild(div);
       }
     }
 
-    function renderSouthChart(housesBySign) {
+    function renderSouthChart(signRows) {
       const root = document.getElementById("southChart");
       root.innerHTML = "";
-
       SOUTH_LAYOUT.forEach((signIdx) => {
         const div = document.createElement("div");
         if (signIdx === null) {
@@ -643,12 +520,14 @@
           root.appendChild(div);
           return;
         }
-        const data = housesBySign[signIdx];
+        const data = signRows[signIdx];
+        const planets = data.planets.length ? data.planets.map(planetToken).join("\n") : "-";
+        const lagnaLabel = data.isLagna ? " | Lagna" : "";
         div.className = "s-cell";
         div.innerHTML = `
-          <div class="house-head">${SIGNS[signIdx]}</div>
-          <div class="sign-line">House ${data.house}</div>
-          <div class="planet-line">${shortPlanetList(data.planets)}</div>
+          <div class="house-head">${SIGNS[signIdx]}${lagnaLabel}</div>
+          <div class="sign-line">Rasi House ${data.rasiHouse}</div>
+          <div class="planet-line">${planets}</div>
         `;
         root.appendChild(div);
       });
@@ -657,60 +536,146 @@
     function renderPlanetTable(planetRows) {
       const tbody = document.getElementById("planetTable");
       tbody.innerHTML = "";
-      planetRows.forEach((row) => {
+      for (const row of planetRows) {
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${row.planet}</td>
           <td>${formatDms(row.lon)}</td>
           <td>${row.house}</td>
           <td>${row.nakshatra}</td>
+          <td>${row.pada}</td>
+          <td>${row.nadiType} (${row.nadiIndex})</td>
+          <td>${row.starLord}</td>
+          <td>${row.subLord}</td>
+          <td>${row.retro ? "Retro" : "Direct"}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    function renderCuspTable(cuspRows) {
+      const tbody = document.getElementById("cuspTable");
+      tbody.innerHTML = "";
+      for (const row of cuspRows) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${row.house}</td>
+          <td>${formatDms(row.lon)}</td>
+          <td>${SIGNS[Math.floor(row.lon / 30)]}</td>
+          <td>${row.nakshatra}</td>
+          <td>${row.pada}</td>
+          <td>${row.nadiType} (${row.nadiIndex})</td>
           <td>${row.starLord}</td>
           <td>${row.subLord}</td>
         `;
         tbody.appendChild(tr);
-      });
+      }
     }
 
     async function generateKPKundli(input) {
       const { date, time, place } = input;
-      if (!date || !time || !place) {
-        throw new Error("Date, time, and place are required.");
-      }
+      if (!date || !time || !place) throw new Error("Date, time, and place are required.");
 
-      const geo = await geocodePlace(place);
+      const [geo, swe] = await Promise.all([geocodePlace(place), getSwissEph()]);
       const timezone = await fetchTimezone(geo.lat, geo.lon);
       const utcMs = zonedDateTimeToUtcMs(date, time, timezone);
-      const jd = julianDayFromUnixMs(utcMs);
-      const ayanamsa = kpAyanamsaDeg(jd);
+      const utcDate = absDateFromUtcMs(utcMs);
 
-      const tropicalAsc = ascendantDeg(jd, geo.lat, geo.lon);
-      const siderealAsc = normDeg(tropicalAsc - ayanamsa);
+      const hourDec = utcDate.getUTCHours()
+        + utcDate.getUTCMinutes() / 60
+        + utcDate.getUTCSeconds() / 3600
+        + utcDate.getUTCMilliseconds() / 3600000;
+      const jdUT = swe.julday(
+        utcDate.getUTCFullYear(),
+        utcDate.getUTCMonth() + 1,
+        utcDate.getUTCDate(),
+        hourDec
+      );
 
-      const tropicalPlanets = tropicalPlanetLongitudes(jd);
-      const siderealPlanets = {};
-      Object.entries(tropicalPlanets).forEach(([k, v]) => {
-        siderealPlanets[k] = normDeg(v - ayanamsa);
-      });
+      swe.set_sid_mode(swe.SE_SIDM_KRISHNAMURTI, 0, 0);
+      const flags = swe.SEFLG_SWIEPH | swe.SEFLG_SIDEREAL | swe.SEFLG_SPEED;
+      const ayanamsa = swe.get_ayanamsa_ut(jdUT);
+      const houseData = swe.houses_ex(jdUT, swe.SEFLG_SIDEREAL, geo.lat, geo.lon, "P");
 
-      const { houses, ascSignIdx, planetRows } = buildHouseData(siderealAsc, siderealPlanets);
-      const housesBySign = {};
+      const cuspMap = {};
+      for (let h = 1; h <= 12; h += 1) cuspMap[h] = normDeg(houseData.cusps[h]);
+      const ascendant = normDeg(houseData.ascmc[0]);
+      const mc = normDeg(houseData.ascmc[1]);
+      const lagnaSign = Math.floor(ascendant / 30);
+
+      const houseRows = {};
       for (let h = 1; h <= 12; h += 1) {
-        const signIdx = houses[h].signIdx;
-        housesBySign[signIdx] = { house: h, planets: houses[h].planets.slice() };
+        houseRows[h] = { house: h, cusp: cuspMap[h], planets: [] };
+      }
+
+      const planetRows = [];
+      for (const cfg of PLANET_CONFIG) {
+        const raw = swe.calc_ut(jdUT, swe[cfg.id], flags);
+        const lon = normDeg(raw[0]);
+        const speed = raw[3];
+        const house = getHouseFromCusps(lon, cuspMap);
+        const kp = getNakshatraInfo(lon);
+        const row = {
+          planet: cfg.key,
+          short: cfg.short,
+          lon,
+          speed,
+          retro: speed < 0,
+          house,
+          ...kp
+        };
+        houseRows[house].planets.push(row);
+        planetRows.push(row);
+      }
+
+      const rahu = planetRows.find((p) => p.planet === "Rahu");
+      const ketuLon = normDeg((rahu ? rahu.lon : 0) + 180);
+      const ketuHouse = getHouseFromCusps(ketuLon, cuspMap);
+      const ketuInfo = getNakshatraInfo(ketuLon);
+      const ketuRow = {
+        planet: "Ketu",
+        short: "Ke",
+        lon: ketuLon,
+        speed: rahu ? rahu.speed : 0,
+        retro: rahu ? rahu.speed < 0 : false,
+        house: ketuHouse,
+        ...ketuInfo
+      };
+      houseRows[ketuHouse].planets.push(ketuRow);
+      planetRows.push(ketuRow);
+      planetRows.sort((a, b) => a.house - b.house || a.lon - b.lon);
+
+      const signRows = {};
+      for (let signIdx = 0; signIdx < 12; signIdx += 1) {
+        signRows[signIdx] = {
+          signIdx,
+          planets: [],
+          rasiHouse: ((signIdx - lagnaSign + 12) % 12) + 1,
+          isLagna: signIdx === lagnaSign
+        };
+      }
+      for (const row of planetRows) {
+        signRows[Math.floor(row.lon / 30)].planets.push(row);
+      }
+
+      const cuspRows = [];
+      for (let h = 1; h <= 12; h += 1) {
+        const lon = cuspMap[h];
+        cuspRows.push({ house: h, lon, ...getNakshatraInfo(lon) });
       }
 
       return {
         input: { date, time, place },
-        location: geo,
         timezone,
-        julianDay: jd,
+        location: geo,
+        julianDayUT: jdUT,
         ayanamsa,
-        ascendantSidereal: siderealAsc,
-        ascendantSign: SIGNS[ascSignIdx],
-        houses,
-        housesBySign,
-        planets: siderealPlanets,
-        kpRows: planetRows
+        ascendant,
+        mc,
+        houseRows,
+        signRows,
+        planetRows,
+        cuspRows
       };
     }
 
@@ -725,16 +690,17 @@
       const place = document.getElementById("birthPlace").value.trim();
 
       btn.disabled = true;
-      status.textContent = "Calculating chart...";
+      status.textContent = "Loading ephemeris and computing accurate KP Lagna chart...";
       try {
         const result = await generateKPKundli({ date, time, place });
-        renderNorthChart(result.houses);
-        renderSouthChart(result.housesBySign);
-        renderPlanetTable(result.kpRows);
+        renderNorthChart(result.houseRows);
+        renderSouthChart(result.signRows);
+        renderPlanetTable(result.planetRows);
+        renderCuspTable(result.cuspRows);
         meta.textContent =
-          `${result.location.displayName} | Timezone: ${result.timezone} | ` +
-          `Ayanamsa: ${result.ayanamsa.toFixed(5)}° | Lagna: ${formatDms(result.ascendantSidereal)}`;
-        status.textContent = "Kundli generated successfully.";
+          `${result.location.displayName} | TZ: ${result.timezone} | ` +
+          `KP Ayanamsa: ${result.ayanamsa.toFixed(6)}° | Lagna: ${formatDms(result.ascendant)} | MC: ${formatDms(result.mc)}`;
+        status.textContent = "Accurate KP Lagna kundli generated successfully.";
       } catch (err) {
         status.textContent = `Error: ${err.message}`;
       } finally {
