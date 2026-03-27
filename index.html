@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KP Kundli Chart (North & South)</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #1f2937;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #22c55e;
+      --border: #334155;
+    }
+
+    * {
+      box-sizing: border-box;
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: linear-gradient(135deg, #0b1220, #101827 45%, #0f172a);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: grid;
+      gap: 18px;
+    }
+
+    .card {
+      background: rgba(17, 24, 39, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      backdrop-filter: blur(4px);
+    }
+
+    h1, h2 {
+      margin: 0 0 10px;
+      font-weight: 700;
+    }
+
+    .sub {
+      color: var(--muted);
+      margin-bottom: 12px;
+      font-size: 14px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      align-items: end;
+    }
+
+    label {
+      font-size: 13px;
+      color: #cbd5e1;
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    input {
+      width: 100%;
+      background: #0b1220;
+      color: var(--text);
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 10px;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: #10b981;
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+    }
+
+    button {
+      background: linear-gradient(90deg, #16a34a, #22c55e);
+      border: none;
+      color: white;
+      border-radius: 8px;
+      padding: 11px 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
+    .status {
+      min-height: 20px;
+      margin-top: 10px;
+      color: #93c5fd;
+      font-size: 13px;
+    }
+
+    .charts {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+      gap: 14px;
+    }
+
+    .chart-wrap {
+      background: #0c1425;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+    }
+
+    .chart-title {
+      margin-bottom: 10px;
+      color: #bbf7d0;
+      font-weight: 700;
+    }
+
+    .north-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      grid-template-rows: repeat(7, 72px);
+      gap: 6px;
+    }
+
+    .n-cell,
+    .s-cell {
+      border: 1px solid #334155;
+      border-radius: 8px;
+      background: #111827;
+      padding: 5px 6px;
+      font-size: 11px;
+      overflow: hidden;
+    }
+
+    .n-empty {
+      background: transparent;
+      border-color: transparent;
+    }
+
+    .house-head {
+      color: #7dd3fc;
+      font-size: 10px;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+
+    .sign-line {
+      color: #facc15;
+      font-size: 10px;
+      margin-bottom: 2px;
+    }
+
+    .planet-line {
+      color: #e5e7eb;
+      font-size: 10px;
+      line-height: 1.25;
+      white-space: pre-wrap;
+    }
+
+    .south-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(4, 86px);
+      gap: 6px;
+    }
+
+    .s-empty {
+      background: transparent;
+      border-color: transparent;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th, td {
+      border: 1px solid var(--border);
+      padding: 8px;
+      text-align: left;
+    }
+
+    th {
+      background: #1e293b;
+    }
+
+    .note {
+      color: #cbd5e1;
+      font-size: 12px;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>KP Kundli Generator (North + South Charts)</h1>
+      <div class="sub">Enter birth date, time, and place. This tool computes sidereal placements (KP ayanamsa approximation), then renders both chart styles.</div>
+      <div class="form-grid">
+        <div>
+          <label for="birthDate">Birth Date</label>
+          <input id="birthDate" type="date" required />
+        </div>
+        <div>
+          <label for="birthTime">Birth Time</label>
+          <input id="birthTime" type="time" step="1" required />
+        </div>
+        <div>
+          <label for="birthPlace">Birth Place</label>
+          <input id="birthPlace" type="text" placeholder="e.g. Chennai, India" required />
+        </div>
+        <div>
+          <button id="generateBtn">Generate Kundli</button>
+        </div>
+      </div>
+      <div id="status" class="status"></div>
+    </div>
+
+    <div class="card">
+      <h2>Charts</h2>
+      <div class="charts">
+        <div class="chart-wrap">
+          <div class="chart-title">North Indian Chart (House-Based)</div>
+          <div id="northChart" class="north-grid"></div>
+        </div>
+        <div class="chart-wrap">
+          <div class="chart-title">South Indian Chart (Sign-Based)</div>
+          <div id="southChart" class="south-grid"></div>
+        </div>
+      </div>
+      <div class="note">Note: This is a practical KP-style calculator with low-precision ephemeris math suitable for quick use in browser apps.</div>
+    </div>
+
+    <div class="card">
+      <h2>KP Planet Details</h2>
+      <div id="metaLine" class="sub">No chart generated yet.</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Planet</th>
+            <th>Sidereal Position</th>
+            <th>House</th>
+            <th>Nakshatra</th>
+            <th>Star Lord</th>
+            <th>Sub Lord</th>
+          </tr>
+        </thead>
+        <tbody id="planetTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const SIGNS = [
+      "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
+      "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
+    ];
+
+    const NAKSHATRAS = [
+      "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra",
+      "Punarvasu", "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni",
+      "Hasta", "Chitra", "Swati", "Vishakha", "Anuradha", "Jyeshtha",
+      "Mula", "Purva Ashadha", "Uttara Ashadha", "Shravana", "Dhanishta", "Shatabhisha",
+      "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
+    ];
+
+    const KP_LORD_ORDER = ["Ketu", "Venus", "Sun", "Moon", "Mars", "Rahu", "Jupiter", "Saturn", "Mercury"];
+    const DASHA_YEARS = { Ketu: 7, Venus: 20, Sun: 6, Moon: 10, Mars: 7, Rahu: 18, Jupiter: 16, Saturn: 19, Mercury: 17 };
+
+    const NORTH_POSITIONS = {
+      1: [0, 3], 2: [1, 4], 3: [2, 5], 4: [3, 6], 5: [4, 5], 6: [5, 4],
+      7: [6, 3], 8: [5, 2], 9: [4, 1], 10: [3, 0], 11: [2, 1], 12: [1, 2]
+    };
+
+    const SOUTH_LAYOUT = [
+      0, 1, 2, 3,
+      11, null, null, 4,
+      10, null, null, 5,
+      9, 8, 7, 6
+    ];
+
+    function degToRad(d) { return d * Math.PI / 180; }
+    function radToDeg(r) { return r * 180 / Math.PI; }
+    function normDeg(d) { return ((d % 360) + 360) % 360; }
+
+    function formatDms(deg) {
+      const d = normDeg(deg);
+      const signIdx = Math.floor(d / 30);
+      const within = d - signIdx * 30;
+      const whole = Math.floor(within);
+      const minFull = (within - whole) * 60;
+      const mins = Math.floor(minFull);
+      const secs = Math.floor((minFull - mins) * 60);
+      return `${whole.toString().padStart(2, "0")}°${mins.toString().padStart(2, "0")}'${secs.toString().padStart(2, "0")}" ${SIGNS[signIdx]}`;
+    }
+
+    function julianDayFromUnixMs(ms) {
+      return ms / 86400000 + 2440587.5;
+    }
+
+    function earthObliquityDeg(T) {
+      return 23.43929111 - (46.8150 * T + 0.00059 * T * T - 0.001813 * T * T * T) / 3600;
+    }
+
+    function kpAyanamsaDeg(jd) {
+      const years = (jd - 2451545.0) / 365.2425;
+      return 23.85675 + 0.0139688 * years;
+    }
+
+    function gmstDeg(jd) {
+      const T = (jd - 2451545.0) / 36525;
+      return normDeg(
+        280.46061837 +
+        360.98564736629 * (jd - 2451545.0) +
+        0.000387933 * T * T -
+        (T * T * T) / 38710000
+      );
+    }
+
+    function ascendantDeg(jd, latDeg, lonDeg) {
+      const T = (jd - 2451545.0) / 36525;
+      const eps = degToRad(earthObliquityDeg(T));
+      const theta = degToRad(normDeg(gmstDeg(jd) + lonDeg));
+      const phi = degToRad(latDeg);
+      const asc = Math.atan2(
+        Math.cos(theta),
+        -Math.sin(theta) * Math.cos(eps) - Math.tan(phi) * Math.sin(eps)
+      );
+      return normDeg(radToDeg(asc));
+    }
+
+    function solveKepler(Mdeg, e) {
+      const M = degToRad(normDeg(Mdeg));
+      let E = M + e * Math.sin(M) * (1 + e * Math.cos(M));
+      for (let i = 0; i < 6; i += 1) {
+        E = E - (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+      }
+      return E;
+    }
+
+    function heliocentricCoords(elements) {
+      const E = solveKepler(elements.M, elements.e);
+      const xv = elements.a * (Math.cos(E) - elements.e);
+      const yv = elements.a * (Math.sqrt(1 - elements.e * elements.e) * Math.sin(E));
+      const v = Math.atan2(yv, xv);
+      const r = Math.sqrt(xv * xv + yv * yv);
+
+      const N = degToRad(elements.N);
+      const i = degToRad(elements.i);
+      const w = degToRad(elements.w);
+      const vw = v + w;
+
+      const xh = r * (Math.cos(N) * Math.cos(vw) - Math.sin(N) * Math.sin(vw) * Math.cos(i));
+      const yh = r * (Math.sin(N) * Math.cos(vw) + Math.cos(N) * Math.sin(vw) * Math.cos(i));
+      const zh = r * (Math.sin(vw) * Math.sin(i));
+
+      return { xh, yh, zh };
+    }
+
+    function tropicalPlanetLongitudes(jd) {
+      const d = jd - 2451543.5;
+
+      const earth = heliocentricCoords({
+        N: 0, i: 0, w: 282.9404 + 4.70935e-5 * d, a: 1,
+        e: 0.016709 - 1.151e-9 * d, M: 356.0470 + 0.9856002585 * d
+      });
+
+      function geoLonFor(elements) {
+        const p = heliocentricCoords(elements);
+        const xg = p.xh - earth.xh;
+        const yg = p.yh - earth.yh;
+        return normDeg(radToDeg(Math.atan2(yg, xg)));
+      }
+
+      const sunLon = normDeg(radToDeg(Math.atan2(earth.yh, earth.xh)) + 180);
+
+      const mercuryLon = geoLonFor({
+        N: 48.3313 + 3.24587e-5 * d,
+        i: 7.0047 + 5.00e-8 * d,
+        w: 29.1241 + 1.01444e-5 * d,
+        a: 0.387098,
+        e: 0.205635 + 5.59e-10 * d,
+        M: 168.6562 + 4.0923344368 * d
+      });
+
+      const venusLon = geoLonFor({
+        N: 76.6799 + 2.46590e-5 * d,
+        i: 3.3946 + 2.75e-8 * d,
+        w: 54.8910 + 1.38374e-5 * d,
+        a: 0.723330,
+        e: 0.006773 - 1.302e-9 * d,
+        M: 48.0052 + 1.6021302244 * d
+      });
+
+      const marsLon = geoLonFor({
+        N: 49.5574 + 2.11081e-5 * d,
+        i: 1.8497 - 1.78e-8 * d,
+        w: 286.5016 + 2.92961e-5 * d,
+        a: 1.523688,
+        e: 0.093405 + 2.516e-9 * d,
+        M: 18.6021 + 0.5240207766 * d
+      });
+
+      const jupiterLon = geoLonFor({
+        N: 100.4542 + 2.76854e-5 * d,
+        i: 1.3030 - 1.557e-7 * d,
+        w: 273.8777 + 1.64505e-5 * d,
+        a: 5.20256,
+        e: 0.048498 + 4.469e-9 * d,
+        M: 19.8950 + 0.0830853001 * d
+      });
+
+      const saturnLon = geoLonFor({
+        N: 113.6634 + 2.38980e-5 * d,
+        i: 2.4886 - 1.081e-7 * d,
+        w: 339.3939 + 2.97661e-5 * d,
+        a: 9.55475,
+        e: 0.055546 - 9.499e-9 * d,
+        M: 316.9670 + 0.0334442282 * d
+      });
+
+      const Ms = normDeg(356.0470 + 0.9856002585 * d);
+      const ws = normDeg(282.9404 + 4.70935e-5 * d);
+      const Ls = normDeg(Ms + ws);
+
+      const moonElements = {
+        N: 125.1228 - 0.0529538083 * d,
+        i: 5.1454,
+        w: 318.0634 + 0.1643573223 * d,
+        a: 60.2666,
+        e: 0.0549,
+        M: 115.3654 + 13.0649929509 * d
+      };
+
+      const moonBase = heliocentricCoords(moonElements);
+      let moonLon = normDeg(radToDeg(Math.atan2(moonBase.yh, moonBase.xh)));
+
+      const Mm = normDeg(moonElements.M);
+      const Nm = normDeg(moonElements.N);
+      const wm = normDeg(moonElements.w);
+      const Lm = normDeg(Mm + wm + Nm);
+      const Dm = normDeg(Lm - Ls);
+      const F = normDeg(Lm - Nm);
+
+      moonLon +=
+        -1.274 * Math.sin(degToRad(Mm - 2 * Dm)) +
+         0.658 * Math.sin(degToRad(2 * Dm)) +
+        -0.186 * Math.sin(degToRad(Ms)) +
+        -0.059 * Math.sin(degToRad(2 * Mm - 2 * Dm)) +
+        -0.057 * Math.sin(degToRad(Mm - 2 * Dm + Ms)) +
+         0.053 * Math.sin(degToRad(Mm + 2 * Dm)) +
+         0.046 * Math.sin(degToRad(2 * Dm - Ms)) +
+         0.041 * Math.sin(degToRad(Mm - Ms)) +
+        -0.035 * Math.sin(degToRad(Dm)) +
+        -0.031 * Math.sin(degToRad(Mm + Ms)) +
+        -0.015 * Math.sin(degToRad(2 * F - 2 * Dm)) +
+         0.011 * Math.sin(degToRad(Mm - 4 * Dm));
+      moonLon = normDeg(moonLon);
+
+      const rahuLon = normDeg(125.04452 - 0.0529538083 * d);
+      const ketuLon = normDeg(rahuLon + 180);
+
+      return {
+        Sun: sunLon,
+        Moon: moonLon,
+        Mars: marsLon,
+        Mercury: mercuryLon,
+        Jupiter: jupiterLon,
+        Venus: venusLon,
+        Saturn: saturnLon,
+        Rahu: rahuLon,
+        Ketu: ketuLon
+      };
+    }
+
+    function getNakshatraInfo(siderealLon) {
+      const nakLen = 360 / 27;
+      const idx = Math.floor(normDeg(siderealLon) / nakLen);
+      const withinDeg = normDeg(siderealLon) - idx * nakLen;
+      const withinArcMin = withinDeg * 60;
+      const starLord = KP_LORD_ORDER[idx % 9];
+
+      const subOrderStart = KP_LORD_ORDER.indexOf(starLord);
+      let acc = 0;
+      let subLord = starLord;
+      for (let i = 0; i < 9; i += 1) {
+        const lord = KP_LORD_ORDER[(subOrderStart + i) % 9];
+        const seg = (800 * DASHA_YEARS[lord]) / 120;
+        if (withinArcMin >= acc && withinArcMin < acc + seg) {
+          subLord = lord;
+          break;
+        }
+        acc += seg;
+      }
+
+      return { nakshatra: NAKSHATRAS[idx], starLord, subLord };
+    }
+
+    function getTimeZoneOffsetMs(timeZone, date) {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        hour12: false,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      }).formatToParts(date);
+
+      const map = {};
+      parts.forEach((p) => { if (p.type !== "literal") map[p.type] = p.value; });
+      const asUTC = Date.UTC(
+        Number(map.year),
+        Number(map.month) - 1,
+        Number(map.day),
+        Number(map.hour),
+        Number(map.minute),
+        Number(map.second)
+      );
+      return asUTC - date.getTime();
+    }
+
+    function zonedDateTimeToUtcMs(dateStr, timeStr, timeZone) {
+      const [y, m, d] = dateStr.split("-").map(Number);
+      const [hh, mm, ss = "0"] = timeStr.split(":");
+      const h = Number(hh);
+      const min = Number(mm);
+      const sec = Number(ss);
+      const localAsIfUtc = Date.UTC(y, m - 1, d, h, min, sec);
+
+      let offset = getTimeZoneOffsetMs(timeZone, new Date(localAsIfUtc));
+      let utcMs = localAsIfUtc - offset;
+      const offset2 = getTimeZoneOffsetMs(timeZone, new Date(utcMs));
+      utcMs = localAsIfUtc - offset2;
+      return utcMs;
+    }
+
+    async function geocodePlace(place) {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(place)}`;
+      const res = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!res.ok) throw new Error("Place lookup failed.");
+      const data = await res.json();
+      if (!data || !data.length) throw new Error("Place not found.");
+      return {
+        lat: Number(data[0].lat),
+        lon: Number(data[0].lon),
+        displayName: data[0].display_name
+      };
+    }
+
+    async function fetchTimezone(lat, lon) {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Timezone lookup failed.");
+      const data = await res.json();
+      if (!data.timezone) throw new Error("Timezone could not be resolved.");
+      return data.timezone;
+    }
+
+    function buildHouseData(ascSidereal, siderealPlanets) {
+      const ascSignIdx = Math.floor(ascSidereal / 30);
+      const houses = {};
+      for (let h = 1; h <= 12; h += 1) {
+        const signIdx = (ascSignIdx + h - 1) % 12;
+        houses[h] = { signIdx, planets: [] };
+      }
+
+      const planetRows = [];
+      for (const [planet, lon] of Object.entries(siderealPlanets)) {
+        const signIdx = Math.floor(normDeg(lon) / 30);
+        const house = ((signIdx - ascSignIdx + 12) % 12) + 1;
+        houses[house].planets.push(planet);
+
+        const kp = getNakshatraInfo(lon);
+        planetRows.push({
+          planet,
+          lon,
+          house,
+          ...kp
+        });
+      }
+
+      planetRows.sort((a, b) => a.house - b.house);
+      return { houses, ascSignIdx, planetRows };
+    }
+
+    function shortPlanetList(planets) {
+      if (!planets.length) return "-";
+      return planets
+        .map((p) => (p === "Jupiter" ? "Jup" : p === "Mercury" ? "Mer" : p === "Saturn" ? "Sat" : p === "Venus" ? "Ven" : p === "Rahu" ? "Ra" : p === "Ketu" ? "Ke" : p === "Sun" ? "Su" : p === "Moon" ? "Mo" : p === "Mars" ? "Ma" : p))
+        .join(", ");
+    }
+
+    function renderNorthChart(houses) {
+      const root = document.getElementById("northChart");
+      root.innerHTML = "";
+      const grid = Array.from({ length: 49 }, () => null);
+
+      for (let h = 1; h <= 12; h += 1) {
+        const [r, c] = NORTH_POSITIONS[h];
+        const idx = r * 7 + c;
+        grid[idx] = h;
+      }
+
+      for (let i = 0; i < 49; i += 1) {
+        const house = grid[i];
+        const div = document.createElement("div");
+        if (!house) {
+          div.className = "n-cell n-empty";
+          root.appendChild(div);
+          continue;
+        }
+        const data = houses[house];
+        div.className = "n-cell";
+        div.innerHTML = `
+          <div class="house-head">H${house}</div>
+          <div class="sign-line">${SIGNS[data.signIdx]}</div>
+          <div class="planet-line">${shortPlanetList(data.planets)}</div>
+        `;
+        root.appendChild(div);
+      }
+    }
+
+    function renderSouthChart(housesBySign) {
+      const root = document.getElementById("southChart");
+      root.innerHTML = "";
+
+      SOUTH_LAYOUT.forEach((signIdx) => {
+        const div = document.createElement("div");
+        if (signIdx === null) {
+          div.className = "s-cell s-empty";
+          root.appendChild(div);
+          return;
+        }
+        const data = housesBySign[signIdx];
+        div.className = "s-cell";
+        div.innerHTML = `
+          <div class="house-head">${SIGNS[signIdx]}</div>
+          <div class="sign-line">House ${data.house}</div>
+          <div class="planet-line">${shortPlanetList(data.planets)}</div>
+        `;
+        root.appendChild(div);
+      });
+    }
+
+    function renderPlanetTable(planetRows) {
+      const tbody = document.getElementById("planetTable");
+      tbody.innerHTML = "";
+      planetRows.forEach((row) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${row.planet}</td>
+          <td>${formatDms(row.lon)}</td>
+          <td>${row.house}</td>
+          <td>${row.nakshatra}</td>
+          <td>${row.starLord}</td>
+          <td>${row.subLord}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function generateKPKundli(input) {
+      const { date, time, place } = input;
+      if (!date || !time || !place) {
+        throw new Error("Date, time, and place are required.");
+      }
+
+      const geo = await geocodePlace(place);
+      const timezone = await fetchTimezone(geo.lat, geo.lon);
+      const utcMs = zonedDateTimeToUtcMs(date, time, timezone);
+      const jd = julianDayFromUnixMs(utcMs);
+      const ayanamsa = kpAyanamsaDeg(jd);
+
+      const tropicalAsc = ascendantDeg(jd, geo.lat, geo.lon);
+      const siderealAsc = normDeg(tropicalAsc - ayanamsa);
+
+      const tropicalPlanets = tropicalPlanetLongitudes(jd);
+      const siderealPlanets = {};
+      Object.entries(tropicalPlanets).forEach(([k, v]) => {
+        siderealPlanets[k] = normDeg(v - ayanamsa);
+      });
+
+      const { houses, ascSignIdx, planetRows } = buildHouseData(siderealAsc, siderealPlanets);
+      const housesBySign = {};
+      for (let h = 1; h <= 12; h += 1) {
+        const signIdx = houses[h].signIdx;
+        housesBySign[signIdx] = { house: h, planets: houses[h].planets.slice() };
+      }
+
+      return {
+        input: { date, time, place },
+        location: geo,
+        timezone,
+        julianDay: jd,
+        ayanamsa,
+        ascendantSidereal: siderealAsc,
+        ascendantSign: SIGNS[ascSignIdx],
+        houses,
+        housesBySign,
+        planets: siderealPlanets,
+        kpRows: planetRows
+      };
+    }
+
+    window.generateKPKundli = generateKPKundli;
+
+    async function onGenerateClick() {
+      const btn = document.getElementById("generateBtn");
+      const status = document.getElementById("status");
+      const meta = document.getElementById("metaLine");
+      const date = document.getElementById("birthDate").value;
+      const time = document.getElementById("birthTime").value;
+      const place = document.getElementById("birthPlace").value.trim();
+
+      btn.disabled = true;
+      status.textContent = "Calculating chart...";
+      try {
+        const result = await generateKPKundli({ date, time, place });
+        renderNorthChart(result.houses);
+        renderSouthChart(result.housesBySign);
+        renderPlanetTable(result.kpRows);
+        meta.textContent =
+          `${result.location.displayName} | Timezone: ${result.timezone} | ` +
+          `Ayanamsa: ${result.ayanamsa.toFixed(5)}° | Lagna: ${formatDms(result.ascendantSidereal)}`;
+        status.textContent = "Kundli generated successfully.";
+      } catch (err) {
+        status.textContent = `Error: ${err.message}`;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    document.getElementById("generateBtn").addEventListener("click", onGenerateClick);
+  </script>
+</body>
+</html>
